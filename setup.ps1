@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
     AI Test-Time Compute 評価システム — ワンクリックセットアップ
 .DESCRIPTION

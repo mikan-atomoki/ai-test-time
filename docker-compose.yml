@@ -11,8 +11,9 @@ services:
     environment:
       - HUGGING_FACE_HUB_TOKEN=${HF_TOKEN:-}
     command:
-      - --model
       - ${VLLM_MODEL:-Qwen/Qwen2.5-0.5B-Instruct}
+      - --gpu-memory-utilization
+      - "0.80"
     deploy:
       resources:
         reservations:

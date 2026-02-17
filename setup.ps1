@@ -87,7 +87,7 @@ if (-not (Test-Path ".venv")) {
 Write-Ok "仮想環境を有効化しました"
 
 Write-Host "    pip install -e '.[dev]' を実行しています..." -ForegroundColor Yellow
-pip install -e ".[dev]" --quiet
+pip install -e ".[dev]"
 Write-Ok "依存パッケージをインストールしました"
 
 # ─── 4. vLLM サーバー起動 ────────────────────────────────────────

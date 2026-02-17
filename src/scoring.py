@@ -1,4 +1,4 @@
-"""スコアリング関数: Self-evaluation / Logprob平均 / Length penalty."""
+"""スコアリング関数: Self-evaluation / Logprob平均 / Length penalty / 多肢選択正解判定."""
 
 from __future__ import annotations
 
@@ -56,18 +56,70 @@ def length_penalty_score(
     return math.exp(-((ratio - 1.0) ** 2) / (2 * tolerance**2))
 
 
+def extract_choice(text: str) -> str | None:
+    """回答テキストからA/B/C/Dの選択肢を抽出する.
+
+    以下のパターンを優先順に試行:
+    1. 先頭付近の単独の A/B/C/D
+    2. テキスト中の明示的なパターン (例: "答えはB", "回答: C")
+    3. テキスト中の最初の単独 A/B/C/D
+    """
+    if not text or not text.strip():
+        return None
+
+    normalized = text.strip()
+
+    # パターン1: 先頭が A/B/C/D で始まる（オプションでピリオドや括弧付き）
+    m = re.match(r"^([A-Da-d])\s*[.。)）:：]?\s", normalized)
+    if m:
+        return m.group(1).upper()
+
+    # テキスト全体が A/B/C/D 1文字のみ
+    if re.fullmatch(r"[A-Da-d]", normalized):
+        return normalized.upper()
+
+    # パターン2: 明示的なキーワード付きパターン
+    m = re.search(r"(?:答え|回答|正解|選択)[はがをの：:]\s*([A-Da-d])", normalized)
+    if m:
+        return m.group(1).upper()
+
+    # パターン3: テキスト中の最初の単独 A/B/C/D（前後が非アルファベット）
+    m = re.search(r"(?<![A-Za-z])([A-Da-d])(?![A-Za-z])", normalized)
+    if m:
+        return m.group(1).upper()
+
+    return None
+
+
+def accuracy_score(answer: str, correct_answer: str) -> float:
+    """多肢選択の正解判定。正解なら1.0、不正解なら0.0."""
+    extracted = extract_choice(answer)
+    if extracted is None:
+        return 0.0
+    return 1.0 if extracted == correct_answer.upper() else 0.0
+
+
 def combined_score(
     client: VLLMClient,
     question: str,
     answer: str,
     logprobs: list[float],
     *,
+    correct_answer: str | None = None,
     w_self_eval: float = 0.5,
     w_logprob: float = 0.3,
     w_length: float = 0.2,
     target_length: int = 200,
 ) -> float:
-    """3つの指標の重み付き合計スコアを計算."""
+    """スコアを計算。正解がある場合はaccuracy重視の重み配分に切替."""
+    if correct_answer is not None:
+        # 多肢選択式: accuracy 70%, logprob 20%, self_eval 10%
+        s_accuracy = accuracy_score(answer, correct_answer)
+        s_logprob = logprob_score(logprobs)
+        s_eval = self_evaluation_score(client, question, answer)
+        return 0.7 * s_accuracy + 0.2 * s_logprob + 0.1 * s_eval
+
+    # 自由記述式: 従来の重み配分
     s_eval = self_evaluation_score(client, question, answer)
     s_logprob = logprob_score(logprobs)
     s_length = length_penalty_score(answer, target_length=target_length)

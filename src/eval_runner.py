@@ -8,7 +8,7 @@ from dataclasses import dataclass, field
 from src.algorithms.base import Algorithm, AlgorithmResult
 from src.benchmarks.datasets import BenchmarkProblem
 from src.client import VLLMClient
-from src.scoring import combined_score
+from src.scoring import combined_score, extract_choice
 
 
 @dataclass
@@ -34,7 +34,9 @@ class EvalRunner:
         self.client = client
         self.algorithms = algorithms
 
-    def run_single(self, prompt: str) -> dict[str, AlgorithmResult]:
+    def run_single(
+        self, prompt: str, *, correct_answer: str | None = None
+    ) -> dict[str, AlgorithmResult]:
         """単一プロンプトに対して全アルゴリズムを実行."""
         results: dict[str, AlgorithmResult] = {}
         for algo in self.algorithms:
@@ -43,8 +45,19 @@ class EvalRunner:
             result.latency_sec = time.perf_counter() - start
             # スコアリング
             result.score = combined_score(
-                self.client, prompt, result.answer, result.metadata.get("logprobs", []),
+                self.client,
+                prompt,
+                result.answer,
+                result.metadata.get("logprobs", []),
+                correct_answer=correct_answer,
             )
+            # 多肢選択の正解判定情報を記録
+            if correct_answer is not None:
+                extracted = extract_choice(result.answer)
+                result.metadata["extracted_choice"] = extracted
+                result.metadata["is_correct"] = (
+                    extracted is not None and extracted == correct_answer.upper()
+                )
             results[algo.name] = result
         return results
 
@@ -64,7 +77,16 @@ class EvalRunner:
                     problem.prompt,
                     result.answer,
                     result.metadata.get("logprobs", []),
+                    correct_answer=problem.correct_answer,
                 )
+                # 多肢選択の正解判定情報を記録
+                if problem.correct_answer is not None:
+                    extracted = extract_choice(result.answer)
+                    result.metadata["extracted_choice"] = extracted
+                    result.metadata["is_correct"] = (
+                        extracted is not None
+                        and extracted == problem.correct_answer.upper()
+                    )
                 eval_result.results[algo.name] = result
             summary.eval_results.append(eval_result)
 

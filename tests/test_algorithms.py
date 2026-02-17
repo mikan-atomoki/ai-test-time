@@ -10,7 +10,12 @@ from src.client import GenerationResult, VLLMClient
 from src.algorithms.baseline import Baseline
 from src.algorithms.beam_search import BeamSearch
 from src.algorithms.mcts import MCTS, MCTSNode
-from src.scoring import logprob_score, length_penalty_score
+from src.scoring import (
+    logprob_score,
+    length_penalty_score,
+    extract_choice,
+    accuracy_score,
+)
 
 
 def make_mock_client() -> VLLMClient:
@@ -140,3 +145,63 @@ class TestScoring:
         text = " ".join(["word"] * 10)
         score = length_penalty_score(text, target_length=200)
         assert score < 0.5  # targetから遠いのでスコア低い
+
+
+class TestExtractChoice:
+    """extract_choice() のテスト."""
+
+    def test_single_letter(self):
+        assert extract_choice("A") == "A"
+        assert extract_choice("B") == "B"
+        assert extract_choice("C") == "C"
+        assert extract_choice("D") == "D"
+
+    def test_single_letter_lowercase(self):
+        assert extract_choice("a") == "A"
+        assert extract_choice("b") == "B"
+
+    def test_letter_with_period(self):
+        assert extract_choice("B. 正解は5050です") == "B"
+
+    def test_letter_with_explanation(self):
+        assert extract_choice("C です。二酸化炭素を吸収します。") == "C"
+
+    def test_keyword_pattern(self):
+        assert extract_choice("答えはBです") == "B"
+        assert extract_choice("正解はC") == "C"
+        assert extract_choice("回答はA") == "A"
+
+    def test_embedded_letter(self):
+        assert extract_choice("私の回答はDだと思います") == "D"
+
+    def test_empty_input(self):
+        assert extract_choice("") is None
+        assert extract_choice("   ") is None
+
+    def test_no_valid_choice(self):
+        # E以降は選択肢にないので抽出されない
+        assert extract_choice("Eが正解") is None
+
+    def test_does_not_match_mid_word(self):
+        # "ABC" のような連続英字の中のB/Cを誤抽出しない
+        assert extract_choice("ABCコーポレーション") is None
+
+
+class TestAccuracyScore:
+    """accuracy_score() のテスト."""
+
+    def test_correct(self):
+        assert accuracy_score("B", "B") == 1.0
+
+    def test_correct_with_explanation(self):
+        assert accuracy_score("答えはBです。理由は...", "B") == 1.0
+
+    def test_incorrect(self):
+        assert accuracy_score("A", "B") == 0.0
+
+    def test_no_choice_extracted(self):
+        assert accuracy_score("わかりません", "B") == 0.0
+
+    def test_case_insensitive_correct_answer(self):
+        assert accuracy_score("b", "B") == 1.0
+        assert accuracy_score("B", "b") == 1.0
